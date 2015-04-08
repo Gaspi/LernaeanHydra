@@ -11,19 +11,6 @@ from bs4 import BeautifulSoup
 
 from Login import *
 
-try:
-    my_mail
-except NameError:
-    my_mail = raw_input("Enter you email: ")
-print "Using email: " + my_mail
-
-try:
-    my_password
-except NameError:
-    my_password = raw_input("Enter you password: ")
-print "Using password: " + my_password
-
-
 heraclesBaseURL = "https://heracles.economie.gouv.fr"
 heraclesURL = "https://heracles.economie.gouv.fr/Heracles"
 
@@ -47,7 +34,7 @@ def openURL(url, data=None, headers={}):
         datastr = urllib.urlencode(data)
 #        headers['Content-Length'] = str(len(datastr))
         req = urllib2.Request(url,datastr,headers)
-        ans = urllib2.urlopen(req, timeout=2)
+        ans = urllib2.urlopen(req, timeout=10)
 #    print '---- Answer ----'
 #    printDico(ans.headers)
 #    print ''
@@ -325,6 +312,7 @@ class Connection:
 
 class Results:
     def __init__(self, email, password):
+        self.max_bio = 0
         self.data = {}
         self.data_perso = {}
         self.tableauActifs = []
@@ -388,20 +376,40 @@ class Results:
                      'Statut':a[5].encode('utf-8'),
                      'Fonctions': '' if a[6] == u'\xa0' else a[6].encode('utf-8'),
                      'Employeur':a[7].encode('utf-8'),
-                     'Pays':a[8].encode('utf-8'),
-                     'Bio':''}
+                     'Pays':a[8].encode('utf-8') }
                 res.append(d)
         self.data[promo] = res
         # enrich data
         print "Promo " + str(promo) + " parsed. (" + str(len(res)) + "found)."
         for e in res:
             self.con.searchPerso( e['ID'] )
-            e['Bio'] = self.con.perso_info.encode('utf-8')
+            s = self.con.perso_info.encode('utf-8')
             self.con.returnPerso()
+            s=s.replace('\n', '')
+            s=s.replace('\t', '')
+            s=s.replace('\r', '')
+            e['debug'] = s
+            lst = s.split(' - ')
+            name = 'Bio'
+            for l in lst:
+                if len(l) > 0:
+                    if l.startswith('Fonctions actuelles:'):
+                        name = 'Fonctions actuelles'
+                        l = l[20:]
+                    elif l.startswith('Adresse privée:'):
+                        name = 'Adresse privée'
+                        l = l[16:]
+                    elif l.startswith('Carričre:'):
+                        name = 'Carriere'
+                        l = l[10:]
+                    if name in e:
+                        e[name] += ' - ' + l
+                    else:
+                        e[name] = l
         return res
 
     def writeAllData(self, filename):
-        fieldnames = ['ID', 'Nom', 'Prenom', 'Grade', 'Promo', 'Statut', 'Fonctions', 'Employeur', 'Pays', 'Bio']
+        fieldnames = ['ID', 'Nom', 'Prenom', 'Grade', 'Promo', 'Statut', 'Fonctions', 'Employeur', 'Pays', 'Bio', 'Fonctions actuelles', 'Carriere', 'Adresse privée', 'debug']
         with open(filename, 'w') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
@@ -420,6 +428,6 @@ r = Results(my_mail, my_password)
 
 #r.addActifs()
 
-r.addPromos(2010, 2014)
+r.addPromos(2014, 2014)
 
 r.writeAllData("results.csv")
