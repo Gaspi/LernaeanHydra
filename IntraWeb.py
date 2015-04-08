@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+
 """
 Created on Fri Apr 03 20:33:46 2015
 
@@ -27,7 +28,7 @@ heraclesURL = "https://heracles.economie.gouv.fr/Heracles"
 def printDico(d):
     if d:
         for e in d:
-            print e + " : " + str(d[e])
+            print e + " : " + d[e].encode('utf8')
 
 def openURL(url, data=None, headers={}):
     print 'Request: ' + url
@@ -134,12 +135,23 @@ class Connection:
             raise Exception("No textarea found !" + str(promo) + " : " + perso_id)
         self.perso_info = textarea.contents[0]
     
-    def returnPage(self):
+    def returnPerso(self):
         self.POSTquery(self.getReturnData(), self.getConnectHeaders())
         self.perso_id = None
         self.perso_info = None
     
+    def tableauActifs(self):
+        self.POSTquery(self.getTableauActifsData(), self.getConnectHeaders())
     
+    def returnTableauActifs(self):
+        self.POSTquery(self.getTableauActifsReturnData(), self.getConnectHeaders())
+
+    def tableauDispos(self):
+        self.POSTquery(self.getTableauDisposData(), self.getConnectHeaders())
+    
+    def returnTableauDispos(self):
+        self.POSTquery(self.getTableauDisposReturnData(), self.getConnectHeaders())
+
 
     def getPoliteHeaders(self):
         d = getBasicHeader()
@@ -248,7 +260,7 @@ class Connection:
 
     def getReturnData(self):
         return {'IWBUTTON2':'',
-                'IWMEMONOTICEBIO':self.perso_info,
+                'IWMEMONOTICEBIO':'', #self.perso_info,
                 'IW_Action':'IWBUTTON2',
                 'IW_ActionParam':'',
                 'IW_FormName':'IWFormNoticeBio',
@@ -257,11 +269,64 @@ class Connection:
                 'IW_height':'325',
                 'IW_TrackID_':str(self.session_count) }
 
+    def getTableauActifsData(self):
+        return { 'IW_Action':'IWMENU1',
+                 'IW_ActionParam':'IWMENU1_submenu18',
+                 'IW_FormName':'FormMenu',
+                 'IW_FormClass':'TFormMenu',
+                 'IW_width':'1918',
+                 'IW_height':'395',
+                 'IW_TrackID_':str(self.session_count) }
+
+    def getTableauActifsReturnData(self):
+        return {'IWBTRETOUR':'',
+                'IWEDNODOSSIER':'',
+                'IWEDNOM':'',
+                'IWEDPRENOM':'',
+                'IWDBGRIDINGACTIVITE':'',
+                'IWDBGRID1':'',
+                'IWREGIONTITRE_data':'0,105',
+                'IW_Action':'IWLKMENU',
+                'IW_ActionParam':'',
+                'IW_FormName':'IWFormTabIngActivite',
+                'IW_FormClass':'TIWFormTabIngActivite',
+                'IW_width':'1918',
+                'IW_height':'395',
+                'IW_TrackID_':str(self.session_count) }
+
+
+    def getTableauDisposData(self):
+        return { 'IW_Action':'IWMENU1',
+                 'IW_ActionParam':'IWMENU1_submenu19',
+                 'IW_FormName':'FormMenu',
+                 'IW_FormClass':'TFormMenu',
+                 'IW_width':'1918',
+                 'IW_height':'395',
+                 'IW_TrackID_':str(self.session_count) }
+
+    def getTableauDisposReturnData(self):
+        return {'IWBTRETOUR':'',
+                'IWEDNODOSSIER':'',
+                'IWEDNOM':'',
+                'IWEDPRENOM':'',
+                'IWDBGRIDINGACTIVITE':'',
+                'IWDBGRID1':'',
+                'IWREGIONTITRE_data':'0,97',
+                'IW_Action':'IWLKMENU',
+                'IW_ActionParam':'',
+                'IW_FormName':'IWFormTabIngDispo',
+                'IW_FormClass':'TIWFormTabIngDispo',
+                'IW_width':'1918',
+                'IW_height':'395',
+                'IW_TrackID_':str(self.session_count) }
+
 
 class Results:
     def __init__(self, email, password):
         self.data = {}
         self.data_perso = {}
+        self.tableauActifs = []
+        self.tableauDispos = []
         self.con = Connection(email, password)
         self.con.startNewConnection()
         self.con.politeResponse()
@@ -269,12 +334,37 @@ class Results:
         self.con.clickRequest2()
         self.con.connect()
         self.con.gotoSearch()
+
+    def addActifs(self):
+        self.con.tableauActifs()
+        table = self.con.bs.find('table')
+        if not table:
+            raise Exception("No table found !")
+        if table.attrs['id'] != 'TBLIWDBGRIDLISTE':
+            raise Exception("Wrong id: " + table.attrs['id'])
+        rows = table.find_all('tr')
+        res = []
+        for r in rows:
+            if 'onclick' in r.attrs:
+                a = []
+                a.append( re.findall(',\'(.*)\',', r.attrs['onclick'])[0] )
+                a += [ e.contents[0].contents[0] for e in r.find_all('td')]
+                res.append(a)
+        self.tableauActifs = res
+        self.con.returnTableauActifs()
+    
+    def addDispos(self):
+        self.con.tableauDispos()
+        self.tableauDispos.append(self.con.bs)
+        self.con.returnTableauDispos()
     
     def addPromo(self, promo):
         self.con.searchPromo(2014)
         table = self.con.bs.find('table')
-        if not table or table.attrs['id'] != 'TBLIWDBGRIDLISTE':
+        if not table:
             raise Exception("No table found !")
+        if table.attrs['id'] != 'TBLIWDBGRIDLISTE':
+            raise Exception("Wrong id: " + table.attrs['id'])
         rows = table.find_all('tr')
         res = []
         for r in rows:
@@ -289,11 +379,12 @@ class Results:
     def addDataPerso(self, perso_id):
         self.con.searchPerso(perso_id)
         self.data_perso[perso_id] = self.con.perso_info
-        self.con.returnPage()
+        self.con.returnPerso()
 
 
 
 r = Results(my_mail, my_password)
+r.addActifs()
 
 r.addPromo(2014)
 r.addDataPerso('0_109931')
