@@ -9,6 +9,8 @@ Created on Fri Apr 03 20:33:46 2015
 import urllib, urllib2, re, csv
 from bs4 import BeautifulSoup
 
+from Login import *
+
 try:
     my_mail
 except NameError:
@@ -31,12 +33,12 @@ def printDico(d):
             print e + " : " + d[e].encode('utf8')
 
 def openURL(url, data=None, headers={}):
-    print 'Request: ' + url
-    print '------ Data ------'
-    printDico(data)
-    print '---- Headers -----'
-    printDico(headers)
-    print ''
+#    print 'Request: ' + url
+#    print '------ Data ------'
+#    printDico(data)
+#    print '---- Headers -----'
+#    printDico(headers)
+#    print ''
     ans = None
     if data == None:
         req = urllib2.Request(url,None,headers)
@@ -46,16 +48,16 @@ def openURL(url, data=None, headers={}):
 #        headers['Content-Length'] = str(len(datastr))
         req = urllib2.Request(url,datastr,headers)
         ans = urllib2.urlopen(req, timeout=2)
-    print '---- Answer ----'
-    printDico(ans.headers)
-    print ''
+#    print '---- Answer ----'
+#    printDico(ans.headers)
+#    print ''
     return ans
 
 
 def getBasicHeader():
     return {'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Encoding':'gzip, deflate, sdch',
-            'Accept-Language':'en-US,en;q=0.8,fr;q=0.6',
+            'Accept-Language':'fr,en;q=0.8,en-US;q=0.6',
             'Cache-Control':'no-cache',
             'Connection':'keep-alive',
             'Host':'heracles.economie.gouv.fr',
@@ -358,8 +360,12 @@ class Results:
         self.tableauDispos.append(self.con.bs)
         self.con.returnTableauDispos()
     
+    def addPromos(self, start, end):
+        for promo in range(start,end+1):
+            self.addPromo(promo)
+    
     def addPromo(self, promo):
-        self.con.searchPromo(2014)
+        self.con.searchPromo(promo)
         table = self.con.bs.find('table')
         if not table:
             raise Exception("No table found !")
@@ -372,10 +378,36 @@ class Results:
                 a = []
                 a.append( re.findall(',\'(.*)\',', r.attrs['onclick'])[0] )
                 a += [ e.contents[0].contents[0] for e in r.find_all('td')]
-                res.append(a)
+                if len(a) != 9:
+                    raise Exception("Wrong length array.")
+                d = {'ID':a[0].encode('utf-8'),
+                     'Nom':a[1].encode('utf-8'),
+                     'Prenom':a[2].encode('utf-8'),
+                     'Grade':a[3].encode('utf-8'),
+                     'Promo':a[4].encode('utf-8'),
+                     'Statut':a[5].encode('utf-8'),
+                     'Fonctions': '' if a[6] == u'\xa0' else a[6].encode('utf-8'),
+                     'Employeur':a[7].encode('utf-8'),
+                     'Pays':a[8].encode('utf-8'),
+                     'Bio':''}
+                res.append(d)
         self.data[promo] = res
+        # enrich data
+        print "Promo " + str(promo) + " parsed. (" + str(len(res)) + "found)."
+        for e in res:
+            self.con.searchPerso( e['ID'] )
+            e['Bio'] = self.con.perso_info.encode('utf-8')
+            self.con.returnPerso()
         return res
-        
+
+    def writeAllData(self, filename):
+        fieldnames = ['ID', 'Nom', 'Prenom', 'Grade', 'Promo', 'Statut', 'Fonctions', 'Employeur', 'Pays', 'Bio']
+        with open(filename, 'w') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for e in self.data:
+                writer.writerows(self.data[e])
+    
     def addDataPerso(self, perso_id):
         self.con.searchPerso(perso_id)
         self.data_perso[perso_id] = self.con.perso_info
@@ -384,10 +416,10 @@ class Results:
 
 
 r = Results(my_mail, my_password)
-r.addActifs()
-
-r.addPromo(2014)
-r.addDataPerso('0_109931')
-r.addDataPerso('0_109930')
 
 
+#r.addActifs()
+
+r.addPromos(2010, 2014)
+
+r.writeAllData("results.csv")
